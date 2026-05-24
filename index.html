@@ -254,6 +254,7 @@
         }
 
         .suggest-btn {
+            margin-top: 7rem;
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -426,6 +427,7 @@
                 <option value="https://chatgpt.com/?q=">ChatGPT</option>
                 <option value="https://claude.ai/new?q=">Claude</option>
                 <option value="https://perplexity.ai/?q=">Perplexity</option>
+                <option value="https://google.com/search?q={searchTerms}&udm=50">Google AI Mode</option>
             </select>
         </div>
 
@@ -446,7 +448,7 @@
         </div>
         
         <div class="text-[10px] text-white/30 text-center mt-4">
-            76836 Launcher v3.1
+            76836 Launcher v3.2
         </div>
     </div>
 
@@ -912,7 +914,11 @@
                     if (currentEnterAction.type === 'app') {
                         launch(currentEnterAction.value, '_blank');
                     } else if (currentEnterAction.type === 'ai') {
-                        launch(config.aiBot + encodeURIComponent(currentEnterAction.value), '_blank');
+                        const url = config.aiBot.includes('{searchTerms}') 
+  ? config.aiBot.replace('{searchTerms}', encodeURIComponent(currentEnterAction.value))
+  : config.aiBot + encodeURIComponent(currentEnterAction.value);
+
+launch(url, '_blank');
                     } else if (currentEnterAction.type === 'search') {
                         launch(config.searchEngine + encodeURIComponent(currentEnterAction.value), '_blank');
                     }
