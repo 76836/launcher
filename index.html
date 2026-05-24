@@ -267,7 +267,6 @@
             align-items: center;
             gap: 8px;
             color: white;
-            margin-top: 7rem;
         }
 
         .suggest-btn:hover {
@@ -337,7 +336,7 @@
 
         .search-overlay {
             z-index: 1100;
-            overflow: hidden;
+            overflow: visible;
         }
 
         .settings-btn,
@@ -440,6 +439,15 @@
             </select>
         </div>
 
+        <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+                <label for="speed-slider" class="block text-xs text-white/50 font-medium">Animation Speed</label>
+                <span id="speed-value" class="text-xs text-white/70">100%</span>
+            </div>
+            <input id="speed-slider" type="range" min="0.4" max="1.8" step="0.05" value="1"
+                class="w-full accent-blue-400 cursor-pointer">
+        </div>
+
        <div class="mb-4">
             <label class="block text-xs text-white/50 mb-2 font-medium">Wallpaper</label>
             <button onclick="window.location = 'https://76836.github.io/interface/customize';" class="w-full bg-black/40 border border-white/10 p-2 rounded-lg text-white text-sm outline-none focus:border-white/30 transition">
@@ -501,11 +509,21 @@
         const enterSuggestion = document.getElementById('enter-suggestion');
         const enterActionText = document.getElementById('enter-action-text');
         const inlineAnswer = document.getElementById('inline-answer');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedValue = document.getElementById('speed-value');
+
+        const lowEndDevice = (() => {
+            const lowCores = (navigator.hardwareConcurrency || 4) <= 4;
+            const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
+            const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            return lowCores || lowMemory || reducedMotion;
+        })();
 
         let config = {
             searchEngine: localStorage.getItem('76836_engine') || "https://google.com/search?q=",
             launchLocation: localStorage.getItem('newtab_preference') || "new_tab",
-            aiBot: localStorage.getItem('76836_ai') || "https://chatgpt.com/?q="
+            aiBot: localStorage.getItem('76836_ai') || "https://chatgpt.com/?q=",
+            speedMultiplier: Math.min(1.8, Math.max(0.4, Number(localStorage.getItem('76836_speed') || 1)))
         };
 
         let currentEnterAction = { type: 'default', value: null };
@@ -520,6 +538,8 @@
         let isSearching = false;
         let lastFrameTime = Date.now();
         let availableQueue = [];
+        let searchTermLower = '';
+        let searchDirty = false;
 
        function launch(url, target = '_blank', features = 'noopener,noreferrer') {
        const pref = localStorage.getItem('newtab_preference');
@@ -645,12 +665,12 @@
             }
             update(deltaTime) {
                 const speedMultiplier = 3 * Math.min(deltaTime / 16.67, 3);
-                const targetSpeed = this.isHovered ? this.baseSpeed * 0.15 : this.baseSpeed;
+                const base = this.baseSpeed * config.speedMultiplier;
+                const targetSpeed = this.isHovered ? base * 0.15 : base;
                 this.speed += (targetSpeed - this.speed) * 0.08;
 
                 if (isSearching) {
-                    const term = searchInput.value.toLowerCase();
-                    const matchingCards = this.cards.filter(card => card.name.includes(term));
+                    const matchingCards = this.cards.filter(card => card.name.includes(searchTermLower));
                     if (matchingCards.length > 0) {
                         let closestCard = matchingCards[0];
                         let minDistance = Infinity;
@@ -680,11 +700,12 @@
                     card.isVisible = displayY >= -10 && displayY <= 110;
                     card.el.style.visibility = (displayY >= -30 && displayY <= 130) ? 'visible' : 'hidden';
 
-                    if (isSearching) {
-                        const term = searchInput.value.toLowerCase();
-                        card.el.classList.toggle('misted', !card.name.includes(term));
-                    } else {
-                        card.el.classList.remove('misted');
+                    if (searchDirty) {
+                        if (isSearching) {
+                            card.el.classList.toggle('misted', !card.name.includes(searchTermLower));
+                        } else {
+                            card.el.classList.remove('misted');
+                        }
                     }
                 });
             }
@@ -697,6 +718,7 @@
             if ((width * 0.16) < (height * 0.22)) idealCount = 4;
             if ((width * 0.20) < (height * 0.22)) idealCount = 3;
             if ((width * 0.28) < (height * 0.22)) idealCount = 2;
+            if (lowEndDevice) idealCount = Math.max(2, idealCount - 1);
             return idealCount;
         }
 
@@ -727,14 +749,22 @@
             document.getElementById('engine-select').value = config.searchEngine;
             document.getElementById('ai-select').value = config.aiBot;
             document.getElementById('launch-select').value = config.launchLocation;
+            speedSlider.value = String(config.speedMultiplier);
+            speedValue.textContent = `${Math.round(config.speedMultiplier * 100)}%`;
             positionSuggestionBox();
         }
 
         function animate() {
+            if (document.hidden) {
+                lastFrameTime = Date.now();
+                requestAnimationFrame(animate);
+                return;
+            }
             const currentTime = Date.now();
             const deltaTime = currentTime - lastFrameTime;
             lastFrameTime = currentTime;
             belts.forEach(belt => belt.update(deltaTime));
+            searchDirty = false;
             requestAnimationFrame(animate);
         }
 
@@ -862,13 +892,14 @@
 
         searchInput.addEventListener('input', (e) => {
             const val = e.target.value;
-            const term = val.trim().toLowerCase();
-            isSearching = term.length > 0;
+            searchTermLower = val.trim().toLowerCase();
+            isSearching = searchTermLower.length > 0;
+            searchDirty = true;
 
             checkInlineAnswer(val);
 
             if (isSearching) {
-                const matchingApps = apps.filter(app => app.name.toLowerCase().includes(term));
+                const matchingApps = apps.filter(app => app.name.toLowerCase().includes(searchTermLower));
 
                 enterSuggestion.classList.add('visible');
 
@@ -940,15 +971,24 @@ launch(url, '_blank');
         const settingsBtn = document.getElementById('toggle-settings');
         const closeSettingsBtn = document.getElementById('close-settings');
 
+        function updateSpeedSetting(value) {
+            const parsed = Math.min(1.8, Math.max(0.4, Number(value) || 1));
+            config.speedMultiplier = parsed;
+            speedValue.textContent = `${Math.round(parsed * 100)}%`;
+            localStorage.setItem('76836_speed', String(parsed));
+        }
+
         function toggleSettings() {
             const isOpen = settingsPanel.classList.contains('open');
             if (isOpen) {
                 config.searchEngine = document.getElementById('engine-select').value;
                 config.aiBot = document.getElementById('ai-select').value;
                 config.launchLocation = document.getElementById('launch-select').value;
+                config.speedMultiplier = Math.min(1.8, Math.max(0.4, Number(speedSlider.value) || 1));
                 localStorage.setItem('76836_engine', config.searchEngine);
                 localStorage.setItem('76836_ai', config.aiBot);
                 localStorage.setItem('newtab_preference', config.launchLocation);
+                localStorage.setItem('76836_speed', String(config.speedMultiplier));
                 settingsPanel.classList.remove('open');
             } else {
                 settingsPanel.classList.add('open');
@@ -957,6 +997,8 @@ launch(url, '_blank');
 
         settingsBtn.onclick = toggleSettings;
         closeSettingsBtn.onclick = toggleSettings;
+        speedSlider.addEventListener('input', (e) => updateSpeedSetting(e.target.value));
+        speedSlider.addEventListener('change', (e) => updateSpeedSetting(e.target.value));
 
         function maintainFocus() {
             if (window.innerWidth > window.innerHeight && !settingsPanel.classList.contains('open')) {
@@ -974,8 +1016,15 @@ launch(url, '_blank');
             }
         });
 
-        window.addEventListener('resize', refreshBelts);
-        window.addEventListener('resize', positionSuggestionBox);
+        let resizeRaf = null;
+        window.addEventListener('resize', () => {
+            if (resizeRaf !== null) return;
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = null;
+                refreshBelts();
+                positionSuggestionBox();
+            });
+        }, { passive: true });
         window.onload = init;
     </script>
 </body>
